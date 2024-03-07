@@ -21,7 +21,7 @@ function Make_Stochastic_here_and_now_decision(prices, num_of_scenarios)
     end
 
     ## select scenarios reduction function 
-    reduced_prices, probs = cluster_kmedoids(next_prices, num_of_scenarios)
+    reduced_prices, probs = cluster_kmeans(next_prices, num_of_scenarios)
     next_prices = reduced_prices
     num_sampled_scenarios = num_of_scenarios
 
