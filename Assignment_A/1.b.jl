@@ -3,8 +3,8 @@ using JuMP
 using Gurobi
 using Printf
 
-include("/Users/xiaoqian/Desktop/Decision making under uncertainty/Assignmenrt/V2_Assignment_A_codes/V2_02435_two_stage_problem_data.jl")
-include("/Users/xiaoqian/Desktop/Decision making under uncertainty/Assignmenrt/V2_Assignment_A_codes/V2_price_process.jl")
+include("V2_Assignment_A_codes/V2_02435_two_stage_problem_data.jl")
+include("V2_Assignment_A_codes/V2_price_process.jl")
 
 # Prices are known for today
 prices = round.(10 * rand(3), digits=2)
