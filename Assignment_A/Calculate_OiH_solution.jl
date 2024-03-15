@@ -26,7 +26,7 @@ function Calculate_OiH_solution(day1_price, day2_price)
     
 
     # objective function
-    @objective(model_OH, Min, sum(price_coffee[t] * x_order[w, t] for w in 1:number_of_warehouses, t in 1:number_of_simulation_periods)
+    @objective(model_OH, Min, sum(price_coffee[t][w] * x_order[w, t] for w in 1:number_of_warehouses, t in 1:number_of_simulation_periods)
     + sum(cost_tr[w, q] * y_send[w, q, t] for w in 1:number_of_warehouses, q in 1:number_of_warehouses, t in 1:number_of_simulation_periods)
     + sum(cost_miss[w] * m_missing[w, t] for w in 1:number_of_warehouses, t in 1:number_of_simulation_periods))
 
@@ -36,7 +36,7 @@ function Calculate_OiH_solution(day1_price, day2_price)
     # transport capacity
     @constraint(model_OH, transport_capacity[w in 1:number_of_warehouses, q in 1:number_of_warehouses, t in 1:number_of_simulation_periods], y_send[w,q,t] <= transport_capacities[w,q])
     # quantity send equal quantity recieved
-    @constraint(model_OH, Send_recieved[w in 1:number_of_warehouses, q in 1:number_of_warehouses, t in 1:number_of_simulation_periods], y_send[w,q,t] == y_received[q,w,t])
+    @constraint(model_OH, SendReceiveBalance[w in 1:number_of_warehouses, q in 1:number_of_warehouses, t in 1:number_of_simulation_periods], y_send[w,q,t] == y_received[q,w,t])
     # inventory balance
     @constraint(model_OH, inventory_balance[w in 1:number_of_warehouses, t in 2:number_of_simulation_periods], demand_coffee[w,t] == z_storage[w, t-1] - z_storage[w, t] + x_order[w,t] + sum(y_received[w,q,t] - y_send[w,q,t] for q in 1:number_of_warehouses) + m_missing[w,t])
     # initial balance
@@ -70,15 +70,16 @@ function Calculate_OiH_solution(day1_price, day2_price)
 
 end
 
-day1_price = 5
-day2_price = 6
+## test
+prices=round.(10 * rand(3), digits=2)
 
-# Call your function with the sample data
-results = Calculate_OiH_solution(day1_price, day2_price)
+new_prices = Float64[]
+for price in prices
+    new_price = round(Float64(sample_next(price)), digits=2)
+    push!(new_prices, new_price)
+end
 
-# Print the results to inspect them
-println("Results: ", results)
-
+x_order_opt, z_storage_opt, m_missing_opt, y_send_opt, y_received_opt, total_cost=Calculate_OiH_solution(prices, new_prices)
 
     
 

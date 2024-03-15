@@ -10,10 +10,8 @@ include("reduction_function.jl")
 
 function Make_Stochastic_here_and_now_decision(prices, num_of_scenarios)
     number_of_warehouses, W, cost_miss, cost_tr, warehouse_capacities, transport_capacities, initial_stock, number_of_simulation_periods, sim_T, demand_trajectory = load_the_data(2)
-
-    num_sampled_scenarios = 1000
-
-    next_prices = Array{Float64}(undef, number_of_warehouses, num_sampled_scenarios)
+    num_sampled_scenarios = 1000 
+    next_prices = zeros(Float64, number_of_warehouses, num_sampled_scenarios)
     for w in 1:number_of_warehouses
         for n in 1:num_sampled_scenarios
             next_prices[w,n] = sample_next(prices[w])
@@ -63,8 +61,8 @@ function Make_Stochastic_here_and_now_decision(prices, num_of_scenarios)
     @constraint(model_MS, transport_capacity_2[w in 1:number_of_warehouses, q in 1:number_of_warehouses, n in 1:num_of_scenarios], y_send_2[w,q,n] <= transport_capacities[w,q])
     
     # quantity send equal quantity recieved
-    @constraint(model_MS, Send_recieved_1[w in 1:number_of_warehouses, q in 1:number_of_warehouses], y_send_1[w,q] == y_received_1[q,w])
-    @constraint(model_MS, Send_recieved_2[w in 1:number_of_warehouses, q in 1:number_of_warehouses, n in 1:num_of_scenarios], y_send_2[w,q,n] == y_received_2[q,w,n])
+    @constraint(model_MS, SendReceiveBalance_1[w in 1:number_of_warehouses, q in 1:number_of_warehouses], y_send_1[w,q] == y_received_1[q,w])
+    @constraint(model_MS, SendReceiveBalance_2[w in 1:number_of_warehouses, q in 1:number_of_warehouses, n in 1:num_of_scenarios], y_send_2[w,q,n] == y_received_2[q,w,n])
     
     # inventory balance
     @constraint(model_MS, inventory_balance_1[w in 1:number_of_warehouses], demand_coffee[w,1] == initial_stock[w] - z_storage_1[w] + x_order_1[w] + sum(y_received_1[w,q] - y_send_1[w,q] for q in 1:number_of_warehouses) + m_missing_1[w])
