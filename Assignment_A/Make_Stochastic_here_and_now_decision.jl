@@ -102,6 +102,6 @@ function Make_Stochastic_here_and_now_decision(prices, num_of_scenarios)
 end
 
 prices=round.(10 * rand(3), digits=2)    
-qo_MS,qs_MS,qr_MS,qst_MS,qm_MS,cost_MS=Make_Stochastic_here_and_now_decision(prices,50)
+x_order_opt, z_storage_opt, m_missing_opt, y_send_opt, y_received_opt, total_cost=Make_Stochastic_here_and_now_decision(prices,50)
 
 
