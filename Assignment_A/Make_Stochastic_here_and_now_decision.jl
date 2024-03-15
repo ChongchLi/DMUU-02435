@@ -4,12 +4,12 @@ using Printf
 using Random
 using Clustering
 
-include("V2_Assignment_A_codes/V2_02435_two_stage_problem_data.jl")
 include("V2_Assignment_A_codes/V2_price_process.jl")
+include("02435_two_stage_problem_data.jl")
 include("reduction_function.jl")
 
 function Make_Stochastic_here_and_now_decision(prices, num_of_scenarios)
-    number_of_warehouses, W, cost_miss, cost_tr, warehouse_capacities, transport_capacities, initial_stock, number_of_simulation_periods, sim_T, demand_trajectory = load_the_data()
+    number_of_warehouses, W, cost_miss, cost_tr, warehouse_capacities, transport_capacities, initial_stock, number_of_simulation_periods, sim_T, demand_trajectory = load_the_data(2)
 
     num_sampled_scenarios = 1000
 
@@ -61,12 +61,17 @@ function Make_Stochastic_here_and_now_decision(prices, num_of_scenarios)
     # transport capacity
     @constraint(model_MS, transport_capacity_1[w in 1:number_of_warehouses, q in 1:number_of_warehouses], y_send_1[w,q] <= transport_capacities[w,q])
     @constraint(model_MS, transport_capacity_2[w in 1:number_of_warehouses, q in 1:number_of_warehouses, n in 1:num_of_scenarios], y_send_2[w,q,n] <= transport_capacities[w,q])
+    
+    # quantity send equal quantity recieved
+    @constraint(model_MS, Send_recieved_1[w in 1:number_of_warehouses, q in 1:number_of_warehouses], y_send_1[w,q] == y_received_1[q,w])
+    @constraint(model_MS, Send_recieved_2[w in 1:number_of_warehouses, q in 1:number_of_warehouses, n in 1:num_of_scenarios], y_send_2[w,q,n] == y_received_2[q,w,n])
+    
     # inventory balance
     @constraint(model_MS, inventory_balance_1[w in 1:number_of_warehouses], demand_coffee[w,1] == initial_stock[w] - z_storage_1[w] + x_order_1[w] + sum(y_received_1[w,q] - y_send_1[w,q] for q in 1:number_of_warehouses) + m_missing_1[w])
     @constraint(model_MS, inventory_balance_2[w in 1:number_of_warehouses, n in 1:num_of_scenarios], demand_coffee[w,2] == z_storage_1[w] - z_storage_2[w,n] + x_order_2[w,n] + sum(y_received_2[w,q,n] - y_send_2[w,q,n] for q in 1:number_of_warehouses) + m_missing_2[w,n])
     # Constraint on amount send limited to previous
-    @constraint(model_MS, send_limitied_1[w in 1:number_of_warehouses, q in 1:number_of_warehouses], sum(y_send_1[w,q] for q in 1:number_of_warehouses) <= initial_stock[w])
-    @constraint(model_MS, send_limitied_2[w in 1:number_of_warehouses, q in 1:number_of_warehouses, n in 1:num_of_scenarios], sum(y_send_2[w,q,n] for q in 1:number_of_warehouses) <= z_storage_1[w])
+    @constraint(model_MS, send_limited_1[w in 1:number_of_warehouses, q in 1:number_of_warehouses], sum(y_send_1[w,q] for q in 1:number_of_warehouses) <= initial_stock[w])
+    @constraint(model_MS, send_limited_2[w in 1:number_of_warehouses, q in 1:number_of_warehouses, n in 1:num_of_scenarios], sum(y_send_2[w,q,n] for q in 1:number_of_warehouses) <= z_storage_1[w])
     # a warehouse can only send to other warehouses
     @constraint(model_MS, self_send_1[w in 1:number_of_warehouses], y_send_1[w,w] == 0)
     @constraint(model_MS, self_send_2[w in 1:number_of_warehouses, n in 1:num_of_scenarios], y_send_2[w,w,n] == 0)
@@ -85,7 +90,7 @@ function Make_Stochastic_here_and_now_decision(prices, num_of_scenarios)
         y_received_opt = value.(y_received_1)
 
         # System's total cost
-        # total_cost = objective_value(model_MS)
+        
         total_cost = sum(value.(x_order_1[w])*prices[w] for w in 1:number_of_warehouses) + sum(value.(y_send_1[w,q])*cost_tr[w,q] for w in 1:number_of_warehouses, q in 1:number_of_warehouses)
         + sum(value.(m_missing_1[w])*cost_miss[w] for w in 1:number_of_warehouses)
 

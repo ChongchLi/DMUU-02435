@@ -35,6 +35,8 @@ function Calculate_OiH_solution(day1_price, day2_price)
     @constraint(model_OH, storage_capacity[w in 1:number_of_warehouses, t in 1:number_of_simulation_periods], z_storage[w,t] <= warehouse_capacities[w])
     # transport capacity
     @constraint(model_OH, transport_capacity[w in 1:number_of_warehouses, q in 1:number_of_warehouses, t in 1:number_of_simulation_periods], y_send[w,q,t] <= transport_capacities[w,q])
+    # quantity send equal quantity recieved
+    @constraint(model_OH, Send_recieved[w in 1:number_of_warehouses, q in 1:number_of_warehouses, t in 1:number_of_simulation_periods], y_send[w,q,t] == y_received[q,w,t])
     # inventory balance
     @constraint(model_OH, inventory_balance[w in 1:number_of_warehouses, t in 2:number_of_simulation_periods], demand_coffee[w,t] == z_storage[w, t-1] - z_storage[w, t] + x_order[w,t] + sum(y_received[w,q,t] - y_send[w,q,t] for q in 1:number_of_warehouses) + m_missing[w,t])
     # initial balance
