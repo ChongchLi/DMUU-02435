@@ -98,10 +98,6 @@ function Make_Stochastic_here_and_now_decision(prices, num_of_scenarios)
         error("The model did not solve to optimality.")
     end
 
-
-
-
-
 end
 
 # # test
