@@ -1,0 +1,5 @@
+include("02435_two_stage_problem_data.jl")
+include("V2_Assignment_A_codes/V2_price_process.jl")
+include("Make_Stochastic_here_and_now_decision.jl")
+include("Calculate_OiH_solution.jl")
+include("1.b.jl")

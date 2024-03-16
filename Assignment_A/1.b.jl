@@ -55,6 +55,7 @@ function Make_EV_here_and_now_decision(prices)
     optimize!(model)
 
     if termination_status(model) == MOI.OPTIMAL
+        
         println("Optimal solution found")
         println("Minimal Cost: $(round(objective_value(model), digits=4))")
         println("-----------------")
@@ -73,6 +74,23 @@ function Make_EV_here_and_now_decision(prices)
             end
             println("-----------------") 
         end
+
+    #======================================================#    
+        # Extract decisions
+        x_order_EV = value.(x[:,1])
+        z_storage_EV = value.(z[:,1])
+        m_missing_EV = value.(m[:,1])
+        y_send_EV = value.(y_send[:,:,1])
+        y_receive_EV = value.(y_receive[:,:,1])
+
+        # System's total cost
+        total_cost_1 = objective_value(model)
+
+        # Return the decisions and cost
+        return x_order_EV, z_storage_EV, m_missing_EV, y_send_EV, y_receive_EV, total_cost_1
+    #========================================================#    
+
+
     else
         println("No solution.")
     end
