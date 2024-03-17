@@ -6,6 +6,8 @@ include("1.b.jl")
 
 using JLD
 using Plots
+using Plots
+using Statistics 
 
 ## Generate 100 values (experiments) for the initial prices randomly (uniformly from [0, 10])
 
@@ -39,11 +41,11 @@ function Evaluation(number_of_experiments)
     for i in 1:number_of_experiments
 
         ## Day 1
-        prices_experiments = round(10 * rand(3), digits=2)
+        prices_experiments = round.(10 * rand(3), digits=2)
         day1_price[i,:] = prices_experiments
         ## Day2
         ## For each experiment, generate the second-stage prices by sampling from the function sample next
-        new_prices_experiments = round.(map(Float64,map(sample_next, prices_exp)),digits=2)
+        new_prices_experiments = round.(map(Float64,map(sample_next, prices_experiments)),digits=2)
         day2_price[i,:] = new_prices_experiments
 
         # For each experiment, call each program to make a here-and-now decision.
@@ -123,34 +125,86 @@ function Evaluation(number_of_experiments)
         # day 1
         day1_x_order[i,:,5] = x_order_opt[:,1]
         day1_z_storage[i,:,5] = z_storage_opt[:,1]
-        day1_m_missing[i,:,5] = m_missing_ST50[:,1]
+        day1_m_missing[i,:,5] = m_missing_opt[:,1]
         day1_y_send[i,:,:,5] = y_send_opt[:,:,1]
         day1_y_receive[i,:,:,5] = y_received_opt[:,:,1]
 
         # day 2
-        day2_x_order[i,:,5] = x_order_ST2[:,2]
-        day2_z_storage[i,:,5] = z_storage_ST2[:,2]
-        day2_m_missing[i,:,5] = m_missing_ST2[:,2]
-        day2_y_send[i,:,:,5] = y_send_ST2[:,:,2]
-        day2_y_receive[i,:,:,5] = y_received_ST2[:,:,2]
+        day2_x_order[i,:,5] = x_order_opt[:,2]
+        day2_z_storage[i,:,5] = z_storage_opt[:,2]
+        day2_m_missing[i,:,5] = m_missing_opt[:,2]
+        day2_y_send[i,:,:,5] = y_send_opt[:,:,2]
+        day2_y_receive[i,:,:,5] = y_received_opt[:,:,2]
         total_cost[i,5] += total_cost_opt
     end
 
-    # Output the values in a file
-    script_directory = @__DIR__
-    file_path = joinpath(script_directory, "evaluate.jld")
-    save(file_path, "day1_price", day1_price, "day2_price", day2_price, "day1_x_order", day1_x_order, "day1_y_send", day1_y_send, "day1_y_receive", day1_y_receive, 
-    "day1_z_storage", day1_z_storage, "day1_m_missing", day1_m_missing, "day2_x_order", day2_x_order, "day2_y_send", day2_y_send, "day2_y_receive", day2_y_receive, 
-    "day2_z_storage", day2_z_storage, "day2_m_missing", day2_m_missing, "total_cost", total_cost)
+    return day1_price, day2_price, day1_x_order, day1_y_send, day1_y_receive,
+           day1_z_storage, day1_m_missing, day2_x_order, day2_y_send,
+           day2_y_receive, day2_z_storage, day2_m_missing, total_cost
 end
 
+# Call the Evaluation function
+results = Evaluation(number_of_experiments)
+
+# Now save the results
+script_directory = @__DIR__
+file_path = joinpath(script_directory, "evaluation_results.jld")
+save(file_path, "day1_price", results[1], "day2_price", results[2], 
+     "day1_x_order", results[3], "day1_y_send", results[4], "day1_y_receive", results[5], 
+     "day1_z_storage", results[6], "day1_m_missing", results[7], 
+     "day2_x_order", results[8], "day2_y_send", results[9], "day2_y_receive", results[10], 
+     "day2_z_storage", results[11], "day2_m_missing", results[12], "total_cost", results[13])
 
 
+# Load the results
+script_directory = @__DIR__
+file_path = joinpath(script_directory, "evaluation_results.jld")
+loaded_results = load(file_path)
 
+# Assign loaded results to variables
+day1_price = loaded_results["day1_price"]
+day2_price = loaded_results["day2_price"]
+day1_x_order = loaded_results["day1_x_order"]
+day1_y_send = loaded_results["day1_y_send"]
+day1_y_receive = loaded_results["day1_y_receive"]
+day1_z_storage = loaded_results["day1_z_storage"]
+day1_m_missing = loaded_results["day1_m_missing"]
+day2_x_order = loaded_results["day2_x_order"]
+day2_y_send = loaded_results["day2_y_send"]
+day2_y_receive = loaded_results["day2_y_receive"]
+day2_z_storage = loaded_results["day2_z_storage"]
+day2_m_missing = loaded_results["day2_m_missing"]
+total_cost = loaded_results["total_cost"]
 
+# calculate the average total cost for each of the programs
+average_costs = mean(total_cost, dims=1)[:]
 
+# Calculate the standard deviation of the total costs for error bars
+std_costs = std(total_cost, dims=1)[:]
 
+program_names = ["EV Program", "Stochastic N=5", "Stochastic N=20", "Stochastic N=50", "Optimal-in-Hindsight"]
 
+# Customize the plot size
+plot_size = (800, 600)
 
+# Make a plot
+p = bar(1:5, average_costs, yerr=std_costs, label=program_names, 
+        color=[:blue :orange :green :red :purple], size=plot_size,
+        legend=:right, bar_width=0.5)
 
+# Customize axes and labels
+xlabel!(p, "Program")
+ylabel!(p, "Average Total Cost")
+title!(p, "Comparison of Program Costs")
 
+# Set x-axis ticks and labels with rotation
+xticks!(p, 1:5, program_names, rotation=45, halign=:right)
+
+# Save the plot to a file
+script_directory = @__DIR__
+plot_path = joinpath(script_directory, "cost_comparison_plot.png")
+savefig(p, plot_path)
+# Print the average costs and standard deviations to the console
+for i in 1:length(program_names)
+    println(program_names[i], " - Average Total Cost: ", average_costs[i], ", Standard Deviation: ", std_costs[i])
+end
