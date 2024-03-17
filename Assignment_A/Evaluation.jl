@@ -6,7 +6,6 @@ include("1.b.jl")
 
 using JLD
 using Plots
-using Plots
 using Statistics 
 
 ## Generate 100 values (experiments) for the initial prices randomly (uniformly from [0, 10])
