@@ -188,23 +188,23 @@ program_names = ["EV Program", "Stochastic N=5", "Stochastic N=20", "Stochastic 
 plot_size = (800, 600)
 
 # Make a plot
-p = bar(1:5, average_costs, yerr=std_costs, label=program_names, 
+p = bar(1:5, average_costs, yerr=std_costs, 
         color=[:blue :orange :green :red :purple], size=plot_size,
-        legend=:right, bar_width=0.5)
-
-# Customize axes and labels
+        legend=false, bar_width=0.5) # Set legend to false to remove it
 xlabel!(p, "Program")
 ylabel!(p, "Average Total Cost")
 title!(p, "Comparison of Program Costs")
 
-# Set x-axis ticks and labels with rotation
-xticks!(p, 1:5, program_names, rotation=45, halign=:right)
+xticks!(p, 1:5, program_names)
+
+for (i, avg_cost) in enumerate(average_costs)
+    annotate!(p, i, avg_cost + std_costs[i], text(string("μ=", avg_cost, "\nσ=", round(std_costs[i], digits=2)), 8, :center, :bottom))
+end
 
 # Save the plot to a file
 script_directory = @__DIR__
 plot_path = joinpath(script_directory, "cost_comparison_plot.png")
 savefig(p, plot_path)
-# Print the average costs and standard deviations to the console
-for i in 1:length(program_names)
-    println(program_names[i], " - Average Total Cost: ", average_costs[i], ", Standard Deviation: ", std_costs[i])
-end
+
+# Display the plot
+display(p)
