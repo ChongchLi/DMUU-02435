@@ -105,9 +105,9 @@ end
 # prices=round.(10 * rand(3), digits=2)    
 # x_order_ST1, z_storage_ST1, m_missing_ST1, y_send_ST1, y_received_ST1, total_cost=Make_Stochastic_here_and_now_decision(prices,50)
 
-function stage2_Optimal(z_storage_ST2, prices_day2)
+function stage2_Optimal(z_storage_ST1, prices_day2)
     number_of_warehouses, W, cost_miss, cost_tr, warehouse_capacities, transport_capacities, initial_stock, number_of_simulation_periods, sim_T, demand_trajectory = load_the_data(1)
-    initial_stock = z_storage_ST2 
+    initial_stock = z_storage_ST1 
     demand_coffee = demand_trajectory  # coffee demand
     price_coffee = prices_day2 # coffee prices
 
