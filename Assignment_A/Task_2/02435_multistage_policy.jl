@@ -10,11 +10,11 @@ using Distances
 include("V2_price_process.jl")
 include("V2_02435_multistage_problem_data.jl")
 number_of_warehouses, W, cost_miss, cost_tr, warehouse_capacities, transport_capacities, initial_stock, number_of_simulation_periods, sim_T, demand_trajectory = load_the_data()
-function make_multistage_here_and_now_decision(number_of_sim_periods, tau, current_stock, current_prices, lookahead_days, initial_scenarios, granularity)
+function make_multistage_here_and_now_decision(number_of_sim_periods, number_of_warehouses, num_of_reduced_scenarios, tau, current_stock, current_prices, lookahead_days, initial_scenarios, granularity)
     # Step 1: Define the number of look-ahead days
     lookahead_days = check_lookahead(lookahead_days, number_of_sim_periods, tau)
 
-    # Step 2：Define the initial number of scenarios
+    # Step 2：Define the initial number of scenarios(finished)
 
     # Step 3: Generate your scenarios: Price(w,t,s)
     price_scenarios = generate_scenarios(number_of_warehouses, W, current_prices, initial_scenarios, lookahead_days)
@@ -22,19 +22,83 @@ function make_multistage_here_and_now_decision(number_of_sim_periods, tau, curre
     # Step 4: Discretize Scenarios
     discretized_scenarios = discretize_scenarios(price_scenarios, granularity)
 
-    # Step 5: Reduce scenarios
-    reduced_scenarios, probabilities = reduce_scenarios(discretized_scenarios)
-
-    # Step 6: Reassign probabilities
-    reassigned_probabilities = reassign_probabilities(reduced_scenarios, probabilities)
+    # Step 5 & 6: Reduce scenarios and reassign probabilities
+    reduced_prices, probabilities = reduce_scenarios(discretized_scenarios, number_of_warehouses, num_of_reduced_scenarios, lookahead_days, granularity, reduce_type)
 
     # Step 7: Create and populate the “non-anticipativity” sets
-    non_anticipativity_sets = create_non_anticipativity_sets(reassigned_probabilities)
+    non_anticipativity_sets = create_non_anticipativity_sets(lookahead_days, reduced_prices, num_of_reduced_scenarios)
 
     # Step 8: Solve the program
-    decisions = solve_stochastic_program(non_anticipativity_sets, current_stock, current_prices)
+    model_MP = Model(Gurobi.Optimizer)
+    
+    # DEclare the Variables
+    # amount of the coffee oredered
+    @variable(model_MP, x_order[1:number_of_warehouses, 1:lookahead_days, 1:num_of_reduced_scenarios]>=0)
+    # storage level of w at t
+    @variable(model_MP, z_storage[1:number_of_warehouses, 1:lookahead_days, 1:num_of_reduced_scenarios]>=0)
+    # the missing amount
+    @variable(model_MP, m_missing[1:number_of_warehouses, 1:lookahead_days, 1:num_of_reduced_scenarios]>=0)
+    # At stage t, the amount of coffee is sent from warehouse w to the neighboring warehouse q
+    @variable(model_MP, y_send[1:number_of_warehouses, 1:number_of_warehouses, 1:lookahead_days, 1:num_of_reduced_scenarios]>=0)
+    # At stage t, the amount of coffee is received by the neighboring warehouse q
+    @variable(model_MP, y_received[1:number_of_warehouses, 1:number_of_warehouses, 1:lookahead_days, 1:num_of_reduced_scenarios]>=0)
+    
 
-    return decisions
+    # objective function
+    @objective(model_MP, Min, sum(probabilities[s]*(sum(reduced_prices[w,t,s] * x_order[w,t,s] for w in 1:number_of_warehouses, t in 1:lookahead_days)
+    + sum(cost_tr[w,q] * y_send[w,q,t,s] for w in 1:number_of_warehouses, q in 1:number_of_warehouses, t in 1:lookahead_days)
+    + sum(cost_miss[w] * m_missing[w,t,s] for w in 1:number_of_warehouses, t in 1:lookahead_days)) for s in 1:num_of_reduced_scenarios))
+
+    # constraints
+    # storage capacity
+    @constraint(model_MP, storage_capacity[w in 1:number_of_warehouses, t in 1:lookahead_days, s in 1:num_of_reduced_scenarios], z_storage[w,t,s] <= warehouse_capacities[w])
+    # transport capacity
+    @constraint(model_MP, transport_capacity[w in 1:number_of_warehouses, q in 1:number_of_warehouses, t in 1:lookahead_days, s in 1:num_of_reduced_scenarios], y_send[w,q,t,s] <= transport_capacities[w,q])
+    # quantity send equal quantity recieved
+    @constraint(model_MP, SendReceiveBalance[w in 1:number_of_warehouses, q in 1:number_of_warehouses, t in 1:lookahead_days, s in 1:num_of_reduced_scenarios], y_send[w,q,t,s] == y_received[q,w,t,s])
+    # inventory balance
+    @constraint(model_MP, inventory_balance_start[w in 1:number_of_warehouses, s in 1:num_of_reduced_scenarios], demand_coffee[w,1] == currnet_stock[w] - z_storage[w,1,s] + x_order[w,1,s] + sum(y_received[w,q,1,s] - y_send[w,q,1,s] for q in 1:number_of_warehouses) + m_missing[w,1,s])
+    @constraint(model_MP, inventory_balance[w in 1:number_of_warehouses, t in 2:lookahead_days, s in 1:num_of_reduced_scenarios], demand_coffee[w,t] == z_storage[w,t-1,s] - z_storage[w,t,s] + x_order[w,t,s] + sum(y_received[w,q,t,s] - y_send[w,q,t,s] for q in 1:number_of_warehouses) + m_missing[w,t,s])
+    # Constraint on amount send limited to previous
+    @constraint(model_MP, send_limitied_start[w in 1:number_of_warehouses, q in 1:number_of_warehouses, s in 1:num_of_reduced_scenarios], sum(y_send[w,q,1,s] for q in 1:number_of_warehouses) <= current_stock[w])
+    @constraint(model_MP, send_limitied[w in 1:number_of_warehouses, q in 1:number_of_warehouses,t in 2:lookahead_days, s in 1:num_of_reduced_scenarios], sum(y_send[w,q,t,s] for q in 1:number_of_warehouses) <= z_storage[w,t-1,s])
+    # a warehouse can only send to other warehouses
+    @constraint(model_MP, self_send[w in 1:number_of_warehouses, t in 1:lookahead_days, s in 1:num_of_reduced_scenarios], y_send[w,w,t,s] == 0)
+    # Constraints of non-anticipativity
+    Keys_SetsList = collect(keys(non_anticipativity_sets))
+    for key in Keys_SetsList
+        set = key[1]
+        time = key[2]
+        Others_sets = Sets[key]
+        for set_p in Others_sets 
+            @constraint(model_MP, [w in 1:number_of_warehouses], x_order[w,time,set] == x_order[w,time,set_p])
+            @constraint(model_MP, [w in 1:number_of_warehouses, q in 1:number_of_warehouses], y_send[w,q,time,set] == y_send[w,q,time,set_p])
+            @constraint(model_MP, [w in 1:number_of_warehouses, q in 1:number_of_warehouses], y_received[w,q,time,set] == y_received[w,q,time,set_p])
+            @constraint(model_MP, [w in 1:number_of_warehouses], z_storage[w,time,set] == z_storage[w,time,set_p])
+            @constraint(model_MP, [w in 1:number_of_warehouses], m_missing[w,time,set] == m_missing[w,time,set_p])
+        end
+    end
+
+
+    optimize!(model_MP)
+
+    # Check if the model was solved successfully
+    if termination_status(model_MP) == MOI.OPTIMAL
+        # Extract decisions
+        x_order_MP = value.(x_order[:,1,1])
+        z_storage_MP = value.(z_storage[:,1,1])
+        m_missing_MP = value.(m_missing[:,1,1])
+        y_send_MP = value.(y_send[:,:,1,1])
+        y_received_MP = value.(y_received[:,:,1,1])
+
+        # System's total cost
+        total_cost = objective_value(model_MP)
+
+        # Return the decisions and cost
+        return x_order_ST2, z_storage_ST2, m_missing_ST2, y_send_ST2, y_received_ST2, total_cost
+    else
+        error("The model did not solve to optimality.")
+    end
 end
 
 function check_lookahead(look_ahead_days, number_of_sim_periods, tau)
@@ -76,27 +140,43 @@ function discretize_scenarios(price_scenarios, granularity)
 end
 
 
-function reduce_scenarios(price_scenarios, reduce_type)
+function reduce_scenarios(price_scenarios, number_of_warehouses, num_of_reduced_scenarios, lookahead_days, granularity, reduce_type)
     if reduce_type == "kmeans" 
-        reduced_scenarios, probabilities = cluster_kmeans(price_scenarios, nb_initial_scenarios, nb_reduced_scenarios, granularity)
+        reduced_scenarios, probabilities = cluster_kmeans(price_scenarios, num_of_reduced_scenarios, granularity)
     elseif reduce_type == "kmedoids"
-        reduced_scenarios, probabilities = cluster_kmedoids(number_of_warehouses, price_scenarios, nb_initial_scenarios, nb_reduced_scenarios, actual_look_ahead_days)
+        reduced_scenarios, probabilities = cluster_kmedoids(price_scenarios, number_of_warehouses, num_of_reduced_scenarios, lookahead_days)
     else 
-        reduced_scenarios, probabilities = fast_forward(number_of_warehouses, price_scenarios, nb_initial_scenarios, nb_reduced_scenarios, actual_look_ahead_days)
+        reduced_scenarios, probabilities = fast_forward(price_scenarios, number_of_warehouses, num_of_reduced_scenarios, lookahead_days)
     end
 end
 
-function reassign_probabilities(reduced_scenarios, probabilities)
-    # Reassign probabilities to the reduced set of scenarios
+function create_non_anticipativity_sets(lookahead_days, reduced_prices, num_of_reduced_scenarios)
+    non_anticipativity_sets = Dict()
+    Scen = collect(1:num_of_reduced_scenarios)
+    Day = collect(1:lookahead_days)
+
+    for s in Scen 
+        for sp in s+1:num_of_reduced_scenarios
+            sim = 1
+            for d in Day 
+                if sim == 1
+                    if reduced_prices[:,d,s] == reduced_prices[:,d,sp]
+                        key = (s,d)
+                        if haskey(non_anticipativity_sets, key)
+                            push!(non_anticipativity_sets[key], sp)
+                        else 
+                            non_anticipativity_sets[key] = [sp]
+                        end
+                    else 
+                        sim = 0
+                    end
+                end
+            end
+        end
+    end
+    return non_anticipativity_sets
 end
 
-function create_non_anticipativity_sets(probabilities)
-    # Create sets to ensure non-anticipativity across scenarios
-end
-
-function solve_stochastic_program(non_anticipativity_sets, current_stock, current_prices)
-    # Solve the optimization problem using a stochastic programming solver
-end
 
 
 ##################################################################################################################
