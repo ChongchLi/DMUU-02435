@@ -5,7 +5,7 @@ using Random
 using Clustering
 
 include("V2_price_process.jl")
-include("02435_two_stage_problem_data.jl")
+include("V2_02435_two_stage_problem_data.jl")
 include("reduction_function.jl")
 
 function Make_Stochastic_here_and_now_decision(prices, num_of_scenarios)
