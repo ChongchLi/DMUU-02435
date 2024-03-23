@@ -4,8 +4,8 @@ using Printf
 using Clustering
 using Distances
 
-include("V2_Assignment_A_codes/V2_02435_two_stage_problem_data.jl")
-include("V2_Assignment_A_codes/V2_price_process.jl")
+include("V2_02435_two_stage_problem_data.jl")
+include("V2_price_process.jl")
 include("fast-forward-selection.jl")
 
 
