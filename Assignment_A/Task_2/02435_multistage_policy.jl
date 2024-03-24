@@ -86,16 +86,16 @@ function make_multistage_here_and_now_decision(number_of_simulation_periods, num
     if termination_status(model_MP) == MOI.OPTIMAL
         # Extract decisions
         x_order_MP = value.(x_order[:,1,1])
-        z_storage_MP = value.(z_storage[:,1,1])
-        m_missing_MP = value.(m_missing[:,1,1])
         y_send_MP = value.(y_send[:,:,1,1])
         y_received_MP = value.(y_received[:,:,1,1])
+        z_storage_MP = value.(z_storage[:,1,1])
+        m_missing_MP = value.(m_missing[:,1,1])
 
         # System's total cost
         total_cost = objective_value(model_MP)
 
         # Return the decisions and cost
-        return x_order_MP, z_storage_MP, m_missing_MP, y_send_MP, y_received_MP, total_cost
+        return x_order_MP, y_send_MP, y_received_MP, z_storage_MP, m_missing_MP
     else
         error("The model did not solve to optimality.")
     end
@@ -145,10 +145,6 @@ function discretize_scenarios(price_scenarios, granularity)
     return discretized_scenarios
 end
 
-
-
-
-
 function reduce_scenarios(price_scenarios, number_of_warehouses, num_of_reduced_scenarios, lookahead_days, granularity, reduce_type)
     if reduce_type == "kmeans" 
         reduced_scenarios, probabilities = cluster_kmeans(price_scenarios, num_of_reduced_scenarios, granularity)
@@ -185,8 +181,6 @@ function create_non_anticipativity_sets(lookahead_days, reduced_prices, num_of_r
     end
     return non_anticipativity_sets
 end
-
-
 
 ##################################################################################################################
 ###################           reduction function               ###################################################
@@ -382,18 +376,84 @@ end
 
 
 
+#####################################################
+#### TEST FUNCTION ############
+#####################################################
+# number_of_warehouses, W, cost_miss, cost_tr, warehouse_capacities, transport_capacities, initial_stock, number_of_simulation_periods, sim_T, demand_trajectory = load_the_data()
 
-### test
-number_of_warehouses, W, cost_miss, cost_tr, warehouse_capacities, transport_capacities, initial_stock, number_of_simulation_periods, sim_T, demand_trajectory = load_the_data()
+# include("V2_simulation_experiments.jl")
+# # Creating the random experiments on which the policy will be evaluated
+# number_of_experiments, Expers, Price_experiments = simulation_experiments_creation(number_of_warehouses, W, number_of_simulation_periods)
+# num_of_reduced_scenarios = 20
+# tau = 1
+# current_stock = initial_stock
+# current_prices = Price_experiments[1,:,1]
+# lookahead_days = 3
+# initial_scenarios = 100
+# granularity = 0.5
+# x_order_MP, y_send_MP, y_received_MP, z_storage_MP, m_missing_MP = make_multistage_here_and_now_decision(number_of_simulation_periods, number_of_warehouses, num_of_reduced_scenarios, tau, current_stock, current_prices, lookahead_days, initial_scenarios, granularity,"fast_forward")
 
-include("V2_simulation_experiments.jl")
-# Creating the random experiments on which the policy will be evaluated
-number_of_experiments, Expers, Price_experiments = simulation_experiments_creation(number_of_warehouses, W, number_of_simulation_periods)
-num_of_reduced_scenarios = 20
-tau = 1
-current_stock = initial_stock
-current_prices = Price_experiments[1,:,1]
-lookahead_days = 3
-initial_scenarios = 100
-granularity = 0.5
-x_order_MP, z_storage_MP, m_missing_MP, y_send_MP, y_received_MP, total_cost = make_multistage_here_and_now_decision(number_of_simulation_periods, number_of_warehouses, num_of_reduced_scenarios, tau, current_stock, current_prices, lookahead_days, initial_scenarios, granularity,"fast_forward")
+
+#####################################################
+#### VALIDATE ############
+#####################################################
+# using BenchmarkTools
+
+# # Define your input parameters
+# number_of_warehouses, W, cost_miss, cost_tr, warehouse_capacities, transport_capacities, initial_stock, number_of_simulation_periods, sim_T, demand_trajectory = load_the_data()
+
+# include("V2_simulation_experiments.jl")
+# # Creating the random experiments on which the policy will be evaluated
+# number_of_experiments, Expers, Price_experiments = simulation_experiments_creation(number_of_warehouses, W, number_of_simulation_periods)
+# num_of_reduced_scenarios = 20
+# tau = 1
+# current_stock = initial_stock
+# current_prices = Price_experiments[1,:,1]
+# lookahead_days = 3
+# initial_scenarios = 100
+# granularity = 0.5
+
+# # Run the function and measure execution time
+# execution_time = @elapsed begin
+#     x_order_MP, y_send_MP, y_received_MP, z_storage_MP, m_missing_MP = make_multistage_here_and_now_decision(
+#         number_of_simulation_periods,
+#         number_of_warehouses,
+#         num_of_reduced_scenarios,
+#         tau,
+#         current_stock,
+#         current_prices,
+#         lookahead_days,
+#         initial_scenarios,
+#         granularity,
+#         "fast_forward" # or "kmeans" / "kmedoids"
+#     )
+# end
+
+# println("Execution time: $execution_time seconds")
+
+# # Check if the execution time is within the allowed limit
+# if execution_time > 3
+#     println("Error: The execution time exceeds the 3 seconds limit.")
+# else
+#     println("Success: The execution time is within the allowed limit.")
+# end
+
+# # Check the number of scenarios generated
+# if initial_scenarios > 1000
+#     println("Error: The number of initial scenarios exceeds 1000.")
+# else
+#     println("Success: The number of initial scenarios is within the limit.")
+# end
+
+# # Calculate the total number of decision variables in the model
+# total_vars = number_of_warehouses * lookahead_days * num_of_reduced_scenarios
+# # Multiply by the number of decision variable arrays you have
+# total_vars *= 5 # For x_order, z_storage, m_missing, y_send, y_received
+
+# println("Total number of decision variables: $total_vars")
+
+# if total_vars > 6500
+#     println("Error: The number of decision variables exceeds 6500.")
+# else
+#     println("Success: The number of decision variables is within the limit.")
+# end
