@@ -104,11 +104,10 @@ end
 function check_lookahead(look_ahead_days, number_of_simulation_periods, tau)
     if look_ahead_days > number_of_simulation_periods - tau
         lookahead_days = number_of_simulation_periods-tau+1
-        return lookahead_days
     else 
         lookahead_days = look_ahead_days+1
-        return lookahead_days
     end    
+    return lookahead_days
 end
 
 
