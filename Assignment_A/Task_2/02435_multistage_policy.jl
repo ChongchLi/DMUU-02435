@@ -9,10 +9,10 @@ using Distances
 # include files
 include("V2_price_process.jl")
 include("V2_02435_multistage_problem_data.jl")
-number_of_warehouses, W, cost_miss, cost_tr, warehouse_capacities, transport_capacities, initial_stock, number_of_simulation_periods, sim_T, demand_trajectory = load_the_data()
-function make_multistage_here_and_now_decision(number_of_sim_periods, number_of_warehouses, num_of_reduced_scenarios, tau, current_stock, current_prices, lookahead_days, initial_scenarios, granularity)
+
+function make_multistage_here_and_now_decision(number_of_simulation_periods, number_of_warehouses, num_of_reduced_scenarios, tau, current_stock, current_prices, lookahead_days, initial_scenarios, granularity, reduce_type)
     # Step 1: Define the number of look-ahead days
-    lookahead_days = check_lookahead(lookahead_days, number_of_sim_periods, tau)
+    lookahead_days = check_lookahead(lookahead_days, number_of_simulation_periods, tau)
 
     # Step 2：Define the initial number of scenarios(finished)
 
@@ -57,8 +57,8 @@ function make_multistage_here_and_now_decision(number_of_sim_periods, number_of_
     # quantity send equal quantity recieved
     @constraint(model_MP, SendReceiveBalance[w in 1:number_of_warehouses, q in 1:number_of_warehouses, t in 1:lookahead_days, s in 1:num_of_reduced_scenarios], y_send[w,q,t,s] == y_received[q,w,t,s])
     # inventory balance
-    @constraint(model_MP, inventory_balance_start[w in 1:number_of_warehouses, s in 1:num_of_reduced_scenarios], demand_coffee[w,1] == currnet_stock[w] - z_storage[w,1,s] + x_order[w,1,s] + sum(y_received[w,q,1,s] - y_send[w,q,1,s] for q in 1:number_of_warehouses) + m_missing[w,1,s])
-    @constraint(model_MP, inventory_balance[w in 1:number_of_warehouses, t in 2:lookahead_days, s in 1:num_of_reduced_scenarios], demand_coffee[w,t] == z_storage[w,t-1,s] - z_storage[w,t,s] + x_order[w,t,s] + sum(y_received[w,q,t,s] - y_send[w,q,t,s] for q in 1:number_of_warehouses) + m_missing[w,t,s])
+    @constraint(model_MP, inventory_balance_start[w in 1:number_of_warehouses, s in 1:num_of_reduced_scenarios], demand_trajectory[w,1] == current_stock[w] - z_storage[w,1,s] + x_order[w,1,s] + sum(y_received[w,q,1,s] - y_send[w,q,1,s] for q in 1:number_of_warehouses) + m_missing[w,1,s])
+    @constraint(model_MP, inventory_balance[w in 1:number_of_warehouses, t in 2:lookahead_days, s in 1:num_of_reduced_scenarios], demand_trajectory[w,t] == z_storage[w,t-1,s] - z_storage[w,t,s] + x_order[w,t,s] + sum(y_received[w,q,t,s] - y_send[w,q,t,s] for q in 1:number_of_warehouses) + m_missing[w,t,s])
     # Constraint on amount send limited to previous
     @constraint(model_MP, send_limitied_start[w in 1:number_of_warehouses, q in 1:number_of_warehouses, s in 1:num_of_reduced_scenarios], sum(y_send[w,q,1,s] for q in 1:number_of_warehouses) <= current_stock[w])
     @constraint(model_MP, send_limitied[w in 1:number_of_warehouses, q in 1:number_of_warehouses,t in 2:lookahead_days, s in 1:num_of_reduced_scenarios], sum(y_send[w,q,t,s] for q in 1:number_of_warehouses) <= z_storage[w,t-1,s])
@@ -69,7 +69,7 @@ function make_multistage_here_and_now_decision(number_of_sim_periods, number_of_
     for key in Keys_SetsList
         set = key[1]
         time = key[2]
-        Others_sets = Sets[key]
+        Others_sets = non_anticipativity_sets[key]
         for set_p in Others_sets 
             @constraint(model_MP, [w in 1:number_of_warehouses], x_order[w,time,set] == x_order[w,time,set_p])
             @constraint(model_MP, [w in 1:number_of_warehouses, q in 1:number_of_warehouses], y_send[w,q,time,set] == y_send[w,q,time,set_p])
@@ -95,25 +95,27 @@ function make_multistage_here_and_now_decision(number_of_sim_periods, number_of_
         total_cost = objective_value(model_MP)
 
         # Return the decisions and cost
-        return x_order_ST2, z_storage_ST2, m_missing_ST2, y_send_ST2, y_received_ST2, total_cost
+        return x_order_MP, z_storage_MP, m_missing_MP, y_send_MP, y_received_MP, total_cost
     else
         error("The model did not solve to optimality.")
     end
 end
 
-function check_lookahead(look_ahead_days, number_of_sim_periods, tau)
-    if look_ahead_days > number_of_sim_periods - tau
-        lookahead_days = number_of_sim_periods-tau+1
+function check_lookahead(look_ahead_days, number_of_simulation_periods, tau)
+    if look_ahead_days > number_of_simulation_periods - tau
+        lookahead_days = number_of_simulation_periods-tau+1
         return lookahead_days
     else 
         lookahead_days = look_ahead_days+1
         return lookahead_days
     end    
+end
+
 
 function generate_scenarios(number_of_warehouses, W, current_prices, initial_scenarios, lookahead_days)
 
     Scen = collect(1:initial_scenarios)
-    scenarios = zeros(number_of_warehouses, actual_look_ahead_days, initial_scenarios)
+    scenarios = zeros(number_of_warehouses, lookahead_days, initial_scenarios)
     for s in Scen
         for w in W
             scenarios[w,1,s] = current_prices[w]
@@ -126,18 +128,26 @@ function generate_scenarios(number_of_warehouses, W, current_prices, initial_sce
 end
 
 function discretize_scenarios(price_scenarios, granularity)
-    # Create an empty array to hold the discretized scenarios
+    # Assuming price_scenarios is a 3-dimensional array with dimensions (number_of_warehouses, lookahead_days, number_of_scenarios)
+    
+    # Copy price_scenarios to keep the original data intact
     discretized_scenarios = copy(price_scenarios)
     
-    # Loop over each scenario using eachindex for safer indexing
-    for i in eachindex(price_scenarios)
-        for j in eachindex(price_scenarios[i])
-            discretized_scenarios[i][j] = round(price_scenarios[i][j] / granularity) * granularity
+    # Loop over each entry in the 3D array using proper indexing
+    for i in 1:size(price_scenarios, 1)
+        for j in 1:size(price_scenarios, 2)
+            for k in 1:size(price_scenarios, 3)
+                # Round each price to the nearest value based on the granularity
+                discretized_scenarios[i, j, k] = round(price_scenarios[i, j, k] / granularity) * granularity
+            end
         end
     end
     
     return discretized_scenarios
 end
+
+
+
 
 
 function reduce_scenarios(price_scenarios, number_of_warehouses, num_of_reduced_scenarios, lookahead_days, granularity, reduce_type)
@@ -262,20 +272,22 @@ end
 
 function fast_forward(price_scenarios, number_of_warehouses, num_of_reduced_scenarios, lookahead_days)
 
+    num_scenarios = size(price_scenarios, 3)
+    
     if lookahead_days != 1
-        # reshapped
-        reshape_price_scenarios = reshape(price_scenarios, :, size(price_scenarios, 3))
-        #Calculate distance matrix (euclidean distance)
-        Distance_matrix = zeros(Float64, reshape_price_scenarios, reshape_price_scenarios)
-        for i in 1:reshape_price_scenarios
-            for j in 1:reshape_price_scenarios
-                distance = sqrt(sum((prices[l, i] - prices[l, j])^2 for l in eachindex(1:size(prices, 1))))
+        # Reshape price_scenarios into a 2D matrix where rows correspond to scenarios
+        reshape_price_scenarios = reshape(price_scenarios, :, num_scenarios)
+        # Initialize the Distance_matrix to store the pairwise distances between scenarios
+        Distance_matrix = zeros(Float64, size(reshape_price_scenarios, 2), size(reshape_price_scenarios, 2))
+        for i in 1:num_scenarios
+            for j in 1:num_scenarios
+                distance = sqrt(sum((reshape_price_scenarios[:, i] - reshape_price_scenarios[:, j]).^2))
                 Distance_matrix[i, j] = distance
             end
         end
 
         #Initialize equiprobable probabilities
-        probabilities = repeat([1.0/reshape_price_scenarios], 1, reshape_price_scenarios)[1,:]
+        probabilities = fill(1.0 / size(reshape_price_scenarios, 2), size(reshape_price_scenarios, 2))
         #Include fast forward selection and apply it
 
         result = FastForwardSelection(Distance_matrix, probabilities, num_of_reduced_scenarios)
@@ -326,14 +338,16 @@ function cluster_kmeans(price_scenarios, num_of_reduced_scenarios, granularity)
 end
 
 function cluster_kmedoids(price_scenarios, number_of_warehouses, num_of_reduced_scenarios, lookahead_days)
-
+    
+    num_scenarios = size(price_scenarios, 3)
+    
     if lookahead_days != 1
-        reshape_price_scenarios = reshape(price_scenarios, :, size(price_scenarios, 3))
-        #Calculate distance matrix (euclidean distance)
-        Distance_matrix = zeros(Float64, num_sampled_scenarios, num_sampled_scenarios)
-        for i in 1:num_sampled_scenarios
-            for j in 1:num_sampled_scenarios
-                distance = sqrt(sum((prices[l, i] - prices[l, j])^2 for l in eachindex(1:size(prices, 1))))
+        reshape_price_scenarios = reshape(price_scenarios, :, num_scenarios)
+        # Calculate distance matrix (euclidean distance)
+        Distance_matrix = zeros(Float64, num_scenarios, num_scenarios)
+        for i in 1:num_scenarios
+            for j in 1:num_scenarios
+                distance = sqrt(sum((reshape_price_scenarios[:, i] - reshape_price_scenarios[:, j]).^2))
                 Distance_matrix[i, j] = distance
             end
         end
@@ -362,6 +376,7 @@ function cluster_kmedoids(price_scenarios, number_of_warehouses, num_of_reduced_
         for i in 1:num_of_reduced_scenarios
             new_probabilities[i] = 1/num_of_reduced_scenarios
         end
+    end
 
     return reduced_prices, new_probabilities
 end
@@ -369,3 +384,17 @@ end
 
 
 
+### test
+number_of_warehouses, W, cost_miss, cost_tr, warehouse_capacities, transport_capacities, initial_stock, number_of_simulation_periods, sim_T, demand_trajectory = load_the_data()
+
+include("V2_simulation_experiments.jl")
+# Creating the random experiments on which the policy will be evaluated
+number_of_experiments, Expers, Price_experiments = simulation_experiments_creation(number_of_warehouses, W, number_of_simulation_periods)
+num_of_reduced_scenarios = 20
+tau = 1
+current_stock = initial_stock
+current_prices = Price_experiments[1,:,1]
+lookahead_days = 3
+initial_scenarios = 100
+granularity = 0.5
+x_order_MP, z_storage_MP, m_missing_MP, y_send_MP, y_received_MP, total_cost = make_multistage_here_and_now_decision(number_of_simulation_periods, number_of_warehouses, num_of_reduced_scenarios, tau, current_stock, current_prices, lookahead_days, initial_scenarios, granularity,"fast_forward")
