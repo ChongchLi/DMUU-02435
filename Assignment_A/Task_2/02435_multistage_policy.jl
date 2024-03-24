@@ -10,7 +10,7 @@ using Distances
 include("V2_price_process.jl")
 include("V2_02435_multistage_problem_data.jl")
 
-function make_multistage_here_and_now_decision(number_of_simulation_periods, number_of_warehouses, num_of_reduced_scenarios, tau, current_stock, current_prices, lookahead_days, initial_scenarios, granularity, reduce_type)
+function make_multistage_here_and_now_decision(number_of_simulation_periods, num_of_reduced_scenarios, tau, current_stock, current_prices, lookahead_days, initial_scenarios, granularity, reduce_type)
     # Step 1: Define the number of look-ahead days
     lookahead_days = check_lookahead(lookahead_days, number_of_simulation_periods, tau)
 
@@ -391,7 +391,7 @@ end
 # lookahead_days = 3
 # initial_scenarios = 100
 # granularity = 0.5
-# x_order_MP, y_send_MP, y_received_MP, z_storage_MP, m_missing_MP = make_multistage_here_and_now_decision(number_of_simulation_periods, number_of_warehouses, num_of_reduced_scenarios, tau, current_stock, current_prices, lookahead_days, initial_scenarios, granularity,"fast_forward")
+# x_order_MP, y_send_MP, y_received_MP, z_storage_MP, m_missing_MP = make_multistage_here_and_now_decision(number_of_simulation_periods, num_of_reduced_scenarios, tau, current_stock, current_prices, lookahead_days, initial_scenarios, granularity,"fast_forward")
 
 
 #####################################################

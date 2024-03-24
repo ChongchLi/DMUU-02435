@@ -10,7 +10,7 @@ using Distances
 include("V2_price_process.jl")
 include("V2_02435_multistage_problem_data.jl")
 
-function Make_EV_here_and_now_decision(number_of_simulation_periods, number_of_warehouses, tau, current_stock, current_prices, lookahead_days, nb_initial_scenarios)
+function Make_EV_here_and_now_decision(number_of_simulation_periods, tau, current_stock, current_prices, lookahead_days, initial_scenarios)
     # Define the number of look-ahead days
     lookahead_days = check_lookahead(lookahead_days, number_of_simulation_periods, tau)
 
@@ -18,58 +18,64 @@ function Make_EV_here_and_now_decision(number_of_simulation_periods, number_of_w
     price_scenarios = generate_scenarios(number_of_warehouses, W, current_prices, initial_scenarios, lookahead_days)
 
     # Mean on those scenarios to have only one path of prices
-    cost_coffee = reshape(mean(prices_trajectory_scenarios, dims=3), size(prices_trajectory_scenarios, 1), size(prices_trajectory_scenarios, 2))
+    price_coffee = reshape(mean(price_scenarios, dims=3), size(price_scenarios, 1), size(price_scenarios, 2))
 
     #Declare model with Gurobi solver
-    model_EB = Model(optimizer_with_attributes(Gurobi.Optimizer, "OutputFlag" => 0))
+    model_EV = Model(Gurobi.Optimizer)
 
-    #Declare the variables to optimize
-    # Quantities of coffee ordered, W rows and T columns
-    @variable(model_EB, quantities_ordered[1:number_of_warehouses, 1:actual_look_ahead_days]>=0)
-    # Quantities send from w to q, W rows W columns and T layers
-    @variable(model_EB, quantities_send[1:number_of_warehouses, 1:number_of_warehouses, 1:actual_look_ahead_days]>=0)
-    # Quantities recieved by w from q, W rows W columns and T layers
-    @variable(model_EB, quantities_recieved[1:number_of_warehouses, 1:number_of_warehouses, 1:actual_look_ahead_days]>=0)
-    # Quantities in the warehouse stockage, W rows and T columns
-    @variable(model_EB, quantities_stocked[1:number_of_warehouses, 1:actual_look_ahead_days]>=0)
-    # Quantities mising to complete the demand, W rows and T columns
-    @variable(model_EB, quantities_missed[1:number_of_warehouses, 1:actual_look_ahead_days]>=0)
+    # DEclare the Variables
+    # amount of the coffee oredered
+    @variable(model_EV, x_order[1:number_of_warehouses, 1:lookahead_days]>=0)
+    # storage level of w at t
+    @variable(model_EV, z_storage[1:number_of_warehouses, 1:lookahead_days]>=0)
+    # the missing amount
+    @variable(model_EV, m_missing[1:number_of_warehouses, 1:lookahead_days]>=0)
+    # At stage t, the amount of coffee is sent from warehouse w to the neighboring warehouse q
+    @variable(model_EV, y_send[1:number_of_warehouses, 1:number_of_warehouses, 1:lookahead_days]>=0)
+    # At stage t, the amount of coffee is received by the neighboring warehouse q
+    @variable(model_EV, y_received[1:number_of_warehouses, 1:number_of_warehouses, 1:lookahead_days]>=0)
     
-    #Objective function
-    @objective(model_EB, Min, sum(quantities_ordered[w,t]*cost_coffee[w,t] for w in 1:number_of_warehouses, t in 1:actual_look_ahead_days) 
-    + sum(quantities_send[w,q,t]*cost_tr[w,q] for w in 1:number_of_warehouses, q in 1:number_of_warehouses, t in 1:actual_look_ahead_days)
-    + sum(quantities_missed[w,t]*cost_miss[w] for w in 1:number_of_warehouses, t in 1:actual_look_ahead_days))
+    # objective function
+    @objective(model_EV, Min, sum(price_coffee[w,t] * x_order[w,t] for w in 1:number_of_warehouses, t in 1:lookahead_days)
+    + sum(cost_tr[w,q] * y_send[w,q,t] for w in 1:number_of_warehouses, q in 1:number_of_warehouses, t in 1:lookahead_days)
+    + sum(cost_miss[w] * m_missing[w,t] for w in 1:number_of_warehouses, t in 1:lookahead_days))
 
-    #Constraints of the problem
-    # Constraint on stockage capacities limited to the maximum capacities
-    @constraint(model_EB, Stockage_limit[w in 1:number_of_warehouses, t in 1:actual_look_ahead_days], quantities_stocked[w,t] <= warehouse_capacities[w])
-    # Constraint on transport capacities limited to the maximum capacities
-    @constraint(model_EB, Transport_limit[w in 1:number_of_warehouses, q in 1:number_of_warehouses, t in 1:actual_look_ahead_days], quantities_send[w,q,t] <= transport_capacities[w,q])
-    # Constraint on quantity send equal quantity recieved
-    @constraint(model_EB, Send_recieved[w in 1:number_of_warehouses, q in 1:number_of_warehouses, t in 1:actual_look_ahead_days], quantities_send[w,q,t] == quantities_recieved[q,w,t])
-    # Constraint on a warehouse can only send to others warehouse
-    # Useless cause the self-transport capacity is equal to 0
-    @constraint(model_EB, Self_transport[w in 1:number_of_warehouses, t in 1:actual_look_ahead_days], quantities_send[w,w,t] == 0)
-    # Constraint on quantity send limited to previous stock
-    @constraint(model_EB, Transport_stock[w in 1:number_of_warehouses, q in 1:number_of_warehouses, t in 2:actual_look_ahead_days], sum(quantities_send[w,q,t] for q in 1:number_of_warehouses) <= quantities_stocked[w,t-1])
-    @constraint(model_EB, Transport_stock_start[w in 1:number_of_warehouses, q in 1:number_of_warehouses], sum(quantities_send[w,q,1] for q in 1:number_of_warehouses) <= current_stock[w])
-    # Constraint on quantity stock at time t with input and output
-    @constraint(model_EB, Stockage[w in 1:number_of_warehouses, t in 2:actual_look_ahead_days], quantities_stocked[w,t] == quantities_stocked[w,t-1]+quantities_ordered[w,t]
-    +sum(quantities_recieved[w,q,t] - quantities_send[w,q,t] for q in 1:number_of_warehouses)- demand_trajectory[w,t] + quantities_missed[w,t])
-    @constraint(model_EB, Stockage_start[w in 1:number_of_warehouses], quantities_stocked[w,1] == current_stock[w]+quantities_ordered[w,1]
-    +sum(quantities_recieved[w,q,1] - quantities_send[w,q,1] for q in 1:number_of_warehouses)- demand_trajectory[w,1] + quantities_missed[w,1])
+    # constraints
+    # storage capacity
+    @constraint(model_EV, storage_capacity[w in 1:number_of_warehouses, t in 1:lookahead_days], z_storage[w,t] <= warehouse_capacities[w])
+    # transport capacity
+    @constraint(model_EV, transport_capacity[w in 1:number_of_warehouses, q in 1:number_of_warehouses, t in 1:lookahead_days], y_send[w,q,t] <= transport_capacities[w,q])
+    # quantity send equal quantity recieved
+    @constraint(model_EV, SendReceiveBalance[w in 1:number_of_warehouses, q in 1:number_of_warehouses, t in 1:lookahead_days], y_send[w,q,t] == y_received[q,w,t])
+    # inventory balance
+    @constraint(model_EV, inventory_balance_start[w in 1:number_of_warehouses], demand_trajectory[w,1] == current_stock[w] - z_storage[w,1] + x_order[w,1] + sum(y_received[w,q,1] - y_send[w,q,1] for q in 1:number_of_warehouses) + m_missing[w,1])
+    @constraint(model_EV, inventory_balance[w in 1:number_of_warehouses, t in 2:lookahead_days], demand_trajectory[w,t] == z_storage[w,t-1] - z_storage[w,t] + x_order[w,t] + sum(y_received[w,q,t] - y_send[w,q,t] for q in 1:number_of_warehouses) + m_missing[w,t])
+    # Constraint on amount send limited to previous
+    @constraint(model_EV, send_limitied_start[w in 1:number_of_warehouses, q in 1:number_of_warehouses], sum(y_send[w,q,1] for q in 1:number_of_warehouses) <= current_stock[w])
+    @constraint(model_EV, send_limitied[w in 1:number_of_warehouses, q in 1:number_of_warehouses,t in 2:lookahead_days], sum(y_send[w,q,t] for q in 1:number_of_warehouses) <= z_storage[w,t-1])
+    # a warehouse can only send to other warehouses
+    @constraint(model_EV, self_send[w in 1:number_of_warehouses, t in 1:lookahead_days], y_send[w,w,t] == 0)
+  
+    optimize!(model_EV)
 
-    optimize!(model_EB)
+    # Check if the model was solved successfully
+    if termination_status(model_EV) == MOI.OPTIMAL
+        # Extract decisions
+        x_order_EV = value.(x_order[:,1])
+        y_send_EV = value.(y_send[:,:,1])
+        y_received_EV = value.(y_received[:,:,1])
+        z_storage_EV = value.(z_storage[:,1])
+        m_missing_EV = value.(m_missing[:,1])
 
-    #Check if optimal solution was found
-    if termination_status(model_EB) == MOI.OPTIMAL
-        println("Optimal solution found")
+        # System's total cost
+        total_cost = objective_value(model_EV)
 
-        # Return interesting values
-        return value.(quantities_ordered[:,1]),value.(quantities_send[:,:,1]),value.(quantities_recieved[:,:,1]),value.(quantities_stocked[:,1]),value.(quantities_missed[:,1])
+        # Return the decisions and cost
+        return x_order_EV, y_send_EV, y_received_EV, z_storage_EV, m_missing_EV
     else
-        return error("No solution.")
+        error("The model did not solve to optimality.")
     end
+
 end
 
 function check_lookahead(look_ahead_days, number_of_simulation_periods, tau)
@@ -95,60 +101,4 @@ function generate_scenarios(number_of_warehouses, W, current_prices, initial_sce
         end
     end
     return scenarios
-end
-
-function discretize_scenarios(price_scenarios, granularity)
-    # Assuming price_scenarios is a 3-dimensional array with dimensions (number_of_warehouses, lookahead_days, number_of_scenarios)
-    
-    # Copy price_scenarios to keep the original data intact
-    discretized_scenarios = copy(price_scenarios)
-    
-    # Loop over each entry in the 3D array using proper indexing
-    for i in 1:size(price_scenarios, 1)
-        for j in 1:size(price_scenarios, 2)
-            for k in 1:size(price_scenarios, 3)
-                # Round each price to the nearest value based on the granularity
-                discretized_scenarios[i, j, k] = round(price_scenarios[i, j, k] / granularity) * granularity
-            end
-        end
-    end
-    
-    return discretized_scenarios
-end
-
-function reduce_scenarios(price_scenarios, number_of_warehouses, num_of_reduced_scenarios, lookahead_days, granularity, reduce_type)
-    if reduce_type == "kmeans" 
-        reduced_scenarios, probabilities = cluster_kmeans(price_scenarios, num_of_reduced_scenarios, granularity)
-    elseif reduce_type == "kmedoids"
-        reduced_scenarios, probabilities = cluster_kmedoids(price_scenarios, number_of_warehouses, num_of_reduced_scenarios, lookahead_days)
-    else 
-        reduced_scenarios, probabilities = fast_forward(price_scenarios, number_of_warehouses, num_of_reduced_scenarios, lookahead_days)
-    end
-end
-
-function create_non_anticipativity_sets(lookahead_days, reduced_prices, num_of_reduced_scenarios)
-    non_anticipativity_sets = Dict()
-    Scen = collect(1:num_of_reduced_scenarios)
-    Day = collect(1:lookahead_days)
-
-    for s in Scen 
-        for sp in s+1:num_of_reduced_scenarios
-            sim = 1
-            for d in Day 
-                if sim == 1
-                    if reduced_prices[:,d,s] == reduced_prices[:,d,sp]
-                        key = (s,d)
-                        if haskey(non_anticipativity_sets, key)
-                            push!(non_anticipativity_sets[key], sp)
-                        else 
-                            non_anticipativity_sets[key] = [sp]
-                        end
-                    else 
-                        sim = 0
-                    end
-                end
-            end
-        end
-    end
-    return non_anticipativity_sets
 end

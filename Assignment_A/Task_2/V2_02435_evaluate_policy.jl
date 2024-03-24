@@ -8,6 +8,7 @@
 # Including your policy and the dummy policy
 include("02435_multistage_policy.jl")
 include("V2_dummy_policy.jl")
+include("02435_EV_policy.jl")
 
 include("V2_02435_multistage_problem_data.jl")
 # Loading the problem's parameters
@@ -44,7 +45,8 @@ for e in Expers
         current_prices = Price_experiments[e,:,tau]
 
         # Call policy to make a decision for here and now
-        x[(e,tau)], send[(e,tau)], receive[(e,tau)], z[(e,tau)], m[(e,tau)] = make_multistage_here_and_now_decision(number_of_simulation_periods, number_of_warehouses, num_of_reduced_scenarios, tau, current_stock, current_prices, lookahead_days, initial_scenarios, granularity,"fast_forward")
+        x[(e,tau)], send[(e,tau)], receive[(e,tau)], z[(e,tau)], m[(e,tau)] = Make_EV_here_and_now_decision(number_of_simulation_periods, tau, current_stock, current_prices, lookahead_days, initial_scenarios)
+        # Define the number of look-ahead days
         
         
         #Check whether the policy's here and now decisions are feasible/meaningful
