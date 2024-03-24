@@ -45,7 +45,7 @@ for e in Expers
         current_prices = Price_experiments[e,:,tau]
 
         # Call policy to make a decision for here and now
-        x[(e,tau)], send[(e,tau)], receive[(e,tau)], z[(e,tau)], m[(e,tau)] = Make_EV_here_and_now_decision(number_of_simulation_periods, tau, current_stock, current_prices, lookahead_days, initial_scenarios)
+        x[(e,tau)], send[(e,tau)], receive[(e,tau)], z[(e,tau)], m[(e,tau)] = make_multistage_here_and_now_decision(number_of_simulation_periods, num_of_reduced_scenarios, tau, current_stock, current_prices, lookahead_days, initial_scenarios, granularity, "kmeans")
         # Define the number of look-ahead days
         
         
