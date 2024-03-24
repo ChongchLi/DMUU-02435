@@ -24,7 +24,7 @@ function evaluate_policy(policy, reduce_type, lookahead_days, num_of_reduced_sce
     receive = Dict()
     z = Dict()
     m = Dict()
-    policy_cost = 99999999*ones(number_of_experiments, number_of_sim_periods)
+    policy_cost = 99999999*ones(number_of_experiments, number_of_simulation_periods)
     policy_cost_at_experiment = 99999999*ones(number_of_experiments)
 
     total_time = @elapsed begin
@@ -61,7 +61,7 @@ function evaluate_policy(policy, reduce_type, lookahead_days, num_of_reduced_sce
                 # If not, then the policy's decisions are discarded for this timeslot, and the dummy policy is used instead
                 if successful == 0
                     println("DECISION DOES NOT MEET THE CONSTRAINTS FOR THIS TIMESLOT. THE DUMMY POLICY WILL BE USED INSTEAD")
-                    println(e, number_of_sim_periods, tau, current_stock, current_demands, x[(e,tau)], send[(e,tau)], receive[(e,tau)], z[(e,tau)], m[(e,tau)])
+                    println(e, number_of_simulation_periods, tau, current_stock, current_demands, x[(e,tau)], send[(e,tau)], receive[(e,tau)], z[(e,tau)], m[(e,tau)])
                     global ep = e
                     global taup = tau
                     global current_stockp = current_stock
@@ -71,7 +71,7 @@ function evaluate_policy(policy, reduce_type, lookahead_days, num_of_reduced_sce
                     global rp = receive[(e,tau)] 
                     global zp = z[(e,tau)]
                     global mp = m[(e,tau)]
-                    x[(e,tau)], send[(e,tau)], receive[(e,tau)], z[(e,tau)], m[(e,tau)] = make_dummy_decision(number_of_sim_periods, tau, current_stock, current_demands, current_prices)
+                    x[(e,tau)], send[(e,tau)], receive[(e,tau)], z[(e,tau)], m[(e,tau)] = make_dummy_decision(number_of_simulation_periods, tau, current_stock, current_demands, current_prices)
                 end
 
                 policy_cost[e,tau] = sum(current_prices[w]*x[(e,tau)][w] + cost_miss[w]*m[(e,tau)][w] + sum(cost_tr[w,q]*receive[(e,tau)][w,q] for q in W) for w in W)  
